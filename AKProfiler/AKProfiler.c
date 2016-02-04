@@ -1,13 +1,12 @@
 //AKP_DO_NOT_PROFILE
-/*
-#define main _profiler_main
-*/
 #ifndef _AKPROFILER_H_
 #define _AKPROFILER_H_
 #include <acknex.h>
 #include <stdio.h>
+
 #define AKP_MAX_SCRIPT_SIZE 100000
 char* AKP_DO_NOT_PROFILE = "//AKP_DO_NOT_PROFILE";
+
 #define AKP_INSERTION_TYPE_RETURN_BEGIN 1
 #define AKP_INSERTION_TYPE_RETURN_END 2
 #define AKP_INSERTION_TYPE_WAIT_BEGIN 3
