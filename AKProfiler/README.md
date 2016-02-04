@@ -7,7 +7,7 @@ This script was written in a short amount of time. MAKE A BACKUP OF YOUR PROJECT
 
 ## How to use
 
-Copy the [AKProifler.c]([https://raw.githubusercontent.com/krial057/3dgs-Projects/master/AKProfiler/AKProfiler.c) file into your project folder and include it anywhere in your project:
+Copy the [AKProifler.c](https://raw.githubusercontent.com/krial057/3dgs-Projects/master/AKProfiler/AKProfiler.c) file into your project folder and include it anywhere in your project:
 ```
 #include "AKProfiler.c"
 ```
