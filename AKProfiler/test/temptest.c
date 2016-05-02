@@ -1,5 +1,6 @@
 #include "../AKProfiler.c"
 #include <acknex.h>
+#include "test2.c"
 function slow_function(int count) {
 	int i;
 	for(i = 0; i < count; i ++)

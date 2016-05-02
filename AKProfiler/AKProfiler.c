@@ -4,7 +4,7 @@
 #include <acknex.h>
 #include <stdio.h>
 
-#define AKP_MAX_SCRIPT_SIZE 100000
+#define AKP_MAX_SCRIPT_SIZE 400000
 char* AKP_DO_NOT_PROFILE = "//AKP_DO_NOT_PROFILE";
 
 #define AKP_INSERTION_TYPE_RETURN_BEGIN 1
@@ -106,6 +106,79 @@ AKP_Parser_Insertion* AKP_parser_insert(AKP_Parser_Insertion* head, int position
 	}
 	return head;
 }
+
+
+typedef struct AKP_Parsed_File {
+	char fileName[264];
+	struct AKP_Parsed_File *next;
+}
+AKP_Parsed_File;
+
+AKP_Parsed_File* AKP_parser_add_file(AKP_Parsed_File* head, char* fileName) {
+	AKP_Parsed_File* newParsedFile = (AKP_Parsed_File*) sys_malloc(sizeof(AKP_Parsed_File));
+	strcpy(newParsedFile->fileName, fileName);
+	newParsedFile->next = head;
+	return newParsedFile;
+}
+
+BOOL AKP_parser_file_included(AKP_Parsed_File* head, char* filename) {
+	AKP_Parsed_File* current = head;
+	while(current) {
+		if(strcmp(current->fileName, filename) == 0) return true;
+		current = current->next;
+	}
+	return false;
+}
+
+void AKP_parser_cleanup_includes(AKP_Parsed_File* head) {
+	AKP_Parsed_File* current = head;
+	while(current) {
+		char targetFileName[264];
+		sprintf(targetFileName, "%s.akp.c", current->fileName);
+		file_delete(targetFileName);
+		current = current->next;
+	}
+	
+	//free linked list includes
+	AKP_Parsed_File *prev = head;
+	AKP_Parsed_File *cur = head;
+	while(cur) {
+		prev = cur;
+		cur = prev->next;
+		free(prev);
+	}
+}
+
+AKP_Parsed_File* parsedFileList = NULL;
+
+
+typedef struct AKP_Pragma_Path {
+	char path[264];
+	struct AKP_Pragma_Path *next;
+}
+AKP_Pragma_Path;
+
+AKP_Pragma_Path* AKP_pragma_path_add(AKP_Pragma_Path* head, char* path) {
+	AKP_Pragma_Path* newParsedFile = (AKP_Pragma_Path*) sys_malloc(sizeof(AKP_Pragma_Path));
+	strcpy(newParsedFile->path, path);
+	newParsedFile->next = head;
+	return newParsedFile;
+}
+
+void AKP_parser_cleanup_pragma_paths(AKP_Pragma_Path* head) {
+	//free linked list includes
+	AKP_Pragma_Path *prev = head;
+	AKP_Pragma_Path *cur = head;
+	while(cur) {
+		prev = cur;
+		cur = prev->next;
+		free(prev);
+	}
+}
+
+
+AKP_Pragma_Path* pragmaPathList = NULL;
+
 
 int AKP_is_whitespace(char character) {
 	return (character == ' ' ||character == '\n' || character == '\t' || character == '\v' || character == '\f' || character == '\r');
@@ -255,6 +328,37 @@ int AKP_parse_include(char* azCode, int currentParsePos, AKP_Parser_Insertion** 
 	return i;
 }
 
+int AKP_parse_pragma_path(char* azCode, int currentParsePos, AKP_Parser_Insertion** parseInsertList) {
+	char* azInclude = "#define PRAGMA_PATH";
+	int i = 0;
+	//parsed "wait" characters
+	while(azCode[currentParsePos + i] != '\0' && azInclude[i] != '\0') {
+		if(azCode[currentParsePos + i] != azInclude[i]) return currentParsePos;
+		i++;
+	}
+	if(azInclude[i] != '\0') return currentParsePos;
+	//Wait was not completly parsed
+	i = currentParsePos + i;
+	i = AKP_parse_whitespace(azCode, i);
+	//Parse parenthese open
+	if(azCode[i] != '"') return currentParsePos;
+	i++;
+	//Parse content between ""
+	int includeNameStart = i;
+	char includeFileName[264];
+	while(azCode[i] != '\0') {
+		if(azCode[i] == '"') break;
+		includeFileName[i - includeNameStart] = azCode[i];
+		i++;
+	}
+	includeFileName[i - includeNameStart] = '\0';
+	int includeNameEnd = i;
+	if(azCode[i] != '"') return currentParsePos;
+	i++;
+	pragmaPathList = AKP_pragma_path_add(pragmaPathList, includeFileName);
+	return i;
+}
+
 int AKP_parse_function_body(char* azCode, int currentParsePos, AKP_Parser_Insertion** parseInsertList) {
 	//Parses backwards
 	if(azCode[currentParsePos] != '}') return currentParsePos;
@@ -285,9 +389,9 @@ int AKP_parse_function_body(char* azCode, int currentParsePos, AKP_Parser_Insert
 	}
 	if(azCode[i] != '(') return currentParsePos;
 	i--;
-	i = AKP_parse_whitespace(azCode, i);
+	i = AKP_parse_whitespace_inverse(azCode, i);
 	int functionNameEndPos = i + 1;
-	while(i > 0 && !AKP_is_whitespace(azCode[i])) {
+	while(i > 0 && ((azCode[i] >='a' && azCode[i] <= 'z') || (azCode[i] >= 'A' && azCode[i] <= 'Z') || azCode[i] == '_' || (azCode[i] >= '0' && azCode[i] <= '9'))) {
 		i--;
 	}
 	int functionNameStartPos = i + 1;
@@ -296,7 +400,7 @@ int AKP_parse_function_body(char* azCode, int currentParsePos, AKP_Parser_Insert
 		functionName[i - functionNameStartPos] = azCode[i];
 	}
 	functionName[i - functionNameStartPos] = '\0';
-	if(strcmp(functionName, "while") == 0 || strcmp(functionName, "if") == 0 || strcmp(functionName, "switch") == 0 || strcmp(functionName, "for") == 0)
+	if(strcmp(functionName, "case") == 0 || strcmp(functionName, "while") == 0 || strcmp(functionName, "if") == 0 || strcmp(functionName, "switch") == 0 || strcmp(functionName, "for") == 0)
 	  	return currentParsePos;
 	*parseInsertList = AKP_parser_insert(*parseInsertList, functionBodyStartPos, AKP_INSERTION_TYPE_FUNCTION_BEGIN, functionName);
 	*parseInsertList = AKP_parser_insert(*parseInsertList, functionBodyEndPos, AKP_INSERTION_TYPE_FUNCTION_END, "");
@@ -321,6 +425,9 @@ void AKP_parse_lite_c(char* azCode, char* resultScript) {
 		}
 		if(nextParsePos == parsePos) {
 			nextParsePos = AKP_parse_include(azCode, parsePos, &parseInsertList);
+		}
+		if(nextParsePos == parsePos) {
+			nextParsePos = AKP_parse_pragma_path(azCode, parsePos, &parseInsertList);
 		}
 		if(nextParsePos == parsePos) {
 			nextParsePos = AKP_parse_function_body(azCode, nextParsePos, &parseInsertList);
@@ -374,54 +481,32 @@ void AKP_parse_lite_c(char* azCode, char* resultScript) {
 	}
 }
 
-typedef struct AKP_Parsed_File {
-	char fileName[264];
-	struct AKP_Parsed_File *next;
-}
-AKP_Parsed_File;
-
-AKP_Parsed_File* AKP_parser_add_file(AKP_Parsed_File* head, char* fileName) {
-	AKP_Parsed_File* newParsedFile = (AKP_Parsed_File*) sys_malloc(sizeof(AKP_Parsed_File));
-	strcpy(newParsedFile->fileName, fileName);
-	newParsedFile->next = head;
-	return newParsedFile;
-}
-
-BOOL AKP_parser_file_included(AKP_Parsed_File* head, char* filename) {
-	AKP_Parsed_File* current = head;
-	while(current) {
-		if(strcmp(current->fileName, filename) == 0) return true;
-		current = current->next;
-	}
-	return false;
-}
-
-void AKP_parser_cleanup_includes(AKP_Parsed_File* head) {
-	AKP_Parsed_File* current = head;
-	while(current) {
-		char targetFileName[264];
-		sprintf(targetFileName, "%s.akp.c", current->fileName);
-		file_delete(targetFileName);
-		current = current->next;
-	}
-	
-	//free linked list includes
-	AKP_Parsed_File *prev = head;
-	AKP_Parsed_File *cur = head;
-	while(cur) {
-		prev = cur;
-		cur = prev->next;
-		free(prev);
-	}
-}
-
-AKP_Parsed_File* parsedFileList = NULL;
-
 void AKP_parse_file(char* sourceFileName) {
 	if(AKP_parser_file_included(parsedFileList, sourceFileName)) return;
 	parsedFileList = AKP_parser_add_file(parsedFileList, sourceFileName);
-	char *fileContent = sys_malloc(AKP_MAX_SCRIPT_SIZE);
+	char *fileContent = sys_malloc(AKP_MAX_SCRIPT_SIZE);	
 	var fileHandleSrc = file_open_read(sourceFileName);
+	if(fileHandleSrc == NULL) {
+		char tempStr[256];
+		AKP_Pragma_Path* current = pragmaPathList;
+		var found = 0;
+		while(current && !found) {
+			sprintf(tempStr, "%s/%s", current->path, sourceFileName);
+			//printf("Trying: %s", tempStr);
+			fileHandleSrc = file_open_read(tempStr);
+			if(fileHandleSrc != NULL) {
+				sourceFileName = tempStr;
+				found = 1;
+			}
+			else
+				current = current->next;
+		}
+		if(!found) {
+			//printf("Couldn't open included file: %s", sourceFileName);
+			return;
+		}
+	}	
+	
 	file_str_readto(fileHandleSrc,fileContent, "", AKP_MAX_SCRIPT_SIZE);
 	file_close(fileHandleSrc);
 	int i = 0;
@@ -437,9 +522,7 @@ void AKP_parse_file(char* sourceFileName) {
 	
 	char targetFileName[264];
 	sprintf(targetFileName, "%s.akp.c", sourceFileName);
-	
 	var fileHandleDest = file_open_write(targetFileName);
-	
 	if(!shouldInclude) {
 		file_str_write(fileHandleDest, fileContent);
 		file_close(fileHandleDest);
@@ -468,6 +551,7 @@ void AKP_init_startup() {
 	sprintf(targetFileName, "%s.akp.c", sourceFileName);
 	exec_wait("%EXE_DIR%\\acknex.exe",targetFileName);
 	AKP_parser_cleanup_includes(parsedFileList);
+	AKP_parser_cleanup_pragma_paths(pragmaPathList);
 	sys_exit("Restarting with profiler");
 }
 #endif
