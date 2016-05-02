@@ -159,6 +159,37 @@ int AKP_parse_wait(char* azCode, int currentParsePos, AKP_Parser_Insertion** par
 	return i;
 }
 
+int AKP_parse_wait_for(char* azCode, int currentParsePos, AKP_Parser_Insertion** parseInsertList) {
+	char* azWait = "wait_for";
+	int i = 0;
+	//parsed "wait" characters
+	while(azCode[currentParsePos + i] != '\0' && azWait[i] != '\0') {
+		if(azCode[currentParsePos + i] != azWait[i]) return currentParsePos;
+		i++;
+	}
+	if(azWait[i] != '\0') return currentParsePos;
+	//Wait was not completly parsed
+	i = currentParsePos + i;
+	i = AKP_parse_whitespace(azCode, i);
+	//Parse parenthese open
+	if(azCode[i] != '(') return currentParsePos;
+	i++;
+	//Parse content between parentheses
+	while(azCode[i] != '\0') {
+		if(azCode[i] == ')') break;
+		i++;
+	}
+	if(azCode[i] != ')') return currentParsePos;
+	i++;
+	i = AKP_parse_whitespace(azCode, i);
+	//Parse semicolon
+	if(azCode[i] != ';') return currentParsePos;
+	i++;
+	*parseInsertList = AKP_parser_insert(*parseInsertList, currentParsePos, AKP_INSERTION_TYPE_WAIT_BEGIN, "");
+	*parseInsertList = AKP_parser_insert(*parseInsertList, i, AKP_INSERTION_TYPE_WAIT_END, "");
+	return i;
+}
+
 //returns the parser position after the return instruction. If no return was parsed, returns the same currentParsePos
 int AKP_parse_return(char* azCode, int currentParsePos, AKP_Parser_Insertion** parseInsertList) {
 	char* azReturn = "return";
@@ -282,14 +313,16 @@ void AKP_parse_lite_c(char* azCode, char* resultScript) {
 		//Skip whitespace
 		nextParsePos = AKP_parse_wait(azCode, parsePos, &parseInsertList);
 		if(nextParsePos == parsePos) {
-			//No return found
+			nextParsePos = AKP_parse_wait_for(azCode, parsePos, &parseInsertList);
+		}
+		if(nextParsePos == parsePos) {
+			//No wait found
 			nextParsePos = AKP_parse_return(azCode, parsePos, &parseInsertList);
 		}
 		if(nextParsePos == parsePos) {
 			nextParsePos = AKP_parse_include(azCode, parsePos, &parseInsertList);
 		}
 		if(nextParsePos == parsePos) {
-			//No wait found
 			nextParsePos = AKP_parse_function_body(azCode, nextParsePos, &parseInsertList);
 		}
 		parsePos = nextParsePos;
@@ -370,6 +403,15 @@ void AKP_parser_cleanup_includes(AKP_Parsed_File* head) {
 		sprintf(targetFileName, "%s.akp.c", current->fileName);
 		file_delete(targetFileName);
 		current = current->next;
+	}
+	
+	//free linked list includes
+	AKP_Parsed_File *prev = head;
+	AKP_Parsed_File *cur = head;
+	while(cur) {
+		prev = cur;
+		cur = prev->next;
+		free(prev);
 	}
 }
 

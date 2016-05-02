@@ -24,6 +24,12 @@ function paralel_func_2() {
 	}
 }
 
+function wait_for_func() {
+	paralel_func_2();
+	wait_for(paralel_func_2);
+	return;
+}
+
 int main() {
 	
 	level_load(NULL);
@@ -31,7 +37,8 @@ int main() {
 	slow_function(100);
 	
 	paralel_func_1();
-	paralel_func_2();
+	//paralel_func_2();
+	wait_for_func();
 	
 	return 0;
 }
